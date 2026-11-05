@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="주소로 확인하는 건축물 핵심정보. 공인중개사를 위한 매물 브리핑 비서.">
+  <title>중개톡 비서 | 매물 브리핑</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="header">
+    <a class="brand" href="/" aria-label="중개톡 비서 홈"><img src="/favicon.svg" alt="" width="38" height="38"><span>중개톡 <b>비서</b></span><span class="brand-tag">FOR AGENTS</span></a>
+    <div class="header-right"><span class="connection-dot"></span> 건축HUB 공공데이터 <span class="version">V1.0</span></div>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">PROPERTY BRIEFING ASSISTANT</p><h1>매물의 기본, <span>한눈에 정확하게.</span></h1><p class="intro-copy">주소를 선택하면 건축물대장의 핵심정보를 정리해 드려요.<br class="desktop-break"> 매물 접수부터 고객 상담까지, 확인하는 시간을 줄이세요.</p></div>
+      <div class="intro-stamp" aria-hidden="true"><span class="stamp-icon">↗</span><span>상담 전 확인하는<br><strong>나만의 실무 비서</strong></span></div>
+    </section>
+
+    <section class="search-panel" aria-labelledby="search-title">
+      <div class="panel-top"><h2 id="search-title"><span class="step">01</span> 어떤 건물을 찾으세요?</h2><span class="small-muted">주소 선택 후 건물 조회</span></div>
+      <form id="search-form">
+        <div class="address-modes" role="group" aria-label="주소 입력 방식">
+          <label><input type="radio" name="address-mode" value="jibun" checked><span>법정동·지번</span></label>
+          <label><input type="radio" name="address-mode" value="road"><span>도로명주소</span></label>
+        </div>
+        <fieldset id="jibun-fields" class="address-fields"><legend class="sr-only">법정동·지번 입력</legend>
+        <div class="address-grid">
+          <label>시·도<select id="province" required disabled><option value="">코드 목록 불러오는 중…</option></select></label>
+          <label>시·군·구<select id="district" required disabled><option value="">시·도 먼저 선택</option></select></label>
+          <label class="dong-field">법정동 · 읍·면·리<select id="dong" required disabled><option value="">시·군·구 먼저 선택</option></select></label>
+        </div>
+        <div class="lot-grid">
+          <label>대지 구분<select id="land-type"><option value="0">대지</option><option value="1">산</option><option value="2">블록</option></select></label>
+          <label>본번<input id="bun" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" placeholder="예: 12" required autocomplete="off"></label>
+          <span class="lot-divider" aria-hidden="true">–</span>
+          <label>부번 <span class="optional">선택</span><input id="ji" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" placeholder="없으면 0" autocomplete="off"></label>
+        </div>
+        </fieldset>
+        <fieldset id="road-fields" class="address-fields" hidden disabled><legend class="sr-only">도로명주소 입력</legend>
+          <label for="road-keyword">도로명주소 또는 건물명</label>
+          <div class="road-search-row"><input id="road-keyword" type="text" maxlength="120" placeholder="예: 개포로109길 9, 제주첨단로 213" autocomplete="off"><button type="button" id="road-search-button" class="secondary">주소 검색</button></div>
+          <p class="road-help">주소검색 결과에서 주소를 선택한 뒤 ‘건물 조회’를 눌러 주세요. 연결 지번이 여러 개면 해당 지번까지 선택해 주세요.</p>
+          <div id="road-selected" class="road-selected" hidden><span class="road-selected-label">선택한 도로명주소</span><strong id="selected-road-address"></strong><p id="selected-jibun-address"></p></div>
+          <p id="road-status" class="road-status" role="status" aria-live="polite"></p>
+        </fieldset>
+        <div class="submit-row"><button id="search-button" class="primary" type="submit" disabled><svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span>건물 조회</span></button></div>
+        <div class="search-bottom"><p id="address-preview">조회할 지역과 지번을 선택해 주세요.</p><button class="text-button" type="button" id="example-button" disabled>가이드 예시 주소 입력 <span aria-hidden="true">↗</span></button></div>
+      </form>
+      <div id="code-status" class="code-status" role="status"></div>
+    </section>
+
+    <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+    <section id="results" class="results" aria-label="건물 조회 결과" hidden>
+      <div class="results-header"><div><p class="eyebrow">BUILDING OVERVIEW</p><h2>건물 브리핑 <span id="result-count"></span></h2><p id="result-address"></p></div><div class="live-badge"><span></span>실제 API 조회</div></div>
+      <div class="selection-bar"><label for="building-select">건물 · 동 선택</label><select id="building-select"></select><span id="fetch-time"></span></div>
+      <div id="warning-box" class="warning-box" hidden></div>
+      <article id="building-detail" class="building-detail"></article>
+    </section>
+
+    <section id="empty-state" class="empty-state">
+      <div class="empty-illustration" aria-hidden="true"><svg viewBox="0 0 150 120"><rect x="36" y="31" width="59" height="73" rx="6"/><path d="M50 104V76h15v28M49 47h6m16 0h6M49 61h6m16 0h6M103 104h20V53h-20M113 66h1m-1 12h1m-1 12h1M24 105h111"/><circle cx="101" cy="29" r="19"/><path class="tick" d="m92 29 6 6 11-12"/></svg></div>
+      <h2>좋은 중개는 정확한 확인에서 시작됩니다.</h2>
+      <p>조회할 주소를 입력해 보세요.<br>용도, 면적, 연식, 주차와 승강기를 한눈에 정리해 드립니다.</p>
+      <div class="feature-pills"><span>✓ 건축물 기본정보</span><span>✓ 동별 선택</span><span>✓ 주차·승강기</span></div>
+    </section>
+    <aside class="notice"><span class="info-icon" aria-hidden="true">i</span><p>건축물대장 API 정보는 상담을 위한 참고자료입니다. 계약 전에는 발급된 건축물대장과 현장을 확인해 주세요. 건물 전체 주차대수는 개별 호실의 주차를 보장하지 않습니다.</p></aside>
+    <footer><span>© 중개톡 비서</span><span>데이터 출처 <a href="https://www.data.go.kr/data/15134735/openapi.do" target="_blank" rel="noreferrer">국토교통부 건축HUB ↗</a> · <a href="https://www.code.go.kr/stdcode/regCodeL.do?menuNo=101010100010" target="_blank" rel="noreferrer">행정표준코드 ↗</a></span></footer>
+  </main>
+  <dialog id="address-dialog" aria-labelledby="address-dialog-title">
+    <div class="address-dialog-heading"><div><h2 id="address-dialog-title">도로명주소 찾기</h2><p>검색 결과에서 도로명주소와 연결 지번을 선택해 주세요.</p></div><button type="button" id="close-address-dialog" aria-label="주소검색 닫기">×</button></div>
+    <div id="postcode-container"></div>
+    <p id="postcode-status" class="postcode-status" role="status">주소검색을 불러오는 중입니다…</p>
+  </dialog>
+</body>
+</html>

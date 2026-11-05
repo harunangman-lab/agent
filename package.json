@@ -1,0 +1,13 @@
+{
+  "name": "junggaetalk-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "공인중개사를 위한 건축HUB 매물 브리핑 비서",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check:api": "node tools/check-api.mjs"
+  }
+}
