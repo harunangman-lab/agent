@@ -2,7 +2,7 @@ import { normalizeRoadAddress } from './address.mjs';
 const $ = id => document.getElementById(id);
 const province = $('province'), district = $('district'), dong = $('dong');
 const number = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
-const state = { rows: [], byCode: new Map(), results: [], busy: false, ready: false, mode:'jibun', road:null };
+const state = { rows: [], byCode: new Map(), results: [], busy: false, ready: false, mode:'jibun', road:null,areaData:null,areaAddress:'' };
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 const known = v => v !== null && v !== undefined && String(v).trim() !== '';
 const display = (v, unit = '') => known(v) ? `${typeof v === 'number' ? number.format(v) : esc(v)}${unit}` : '확인 필요';
@@ -21,12 +21,14 @@ function districtsFor(code) {
   return state.rows.filter(r => r.code.endsWith('00000') && prefixes.has(r.code.slice(0,5)));
 }
 function updateDistricts() {
+  clearHousing();
   const p = state.byCode.get(province.value);
   setOptions(district, p ? districtsFor(p.code) : [], '시·군·구 선택', r => r.name.startsWith(p.name + ' ') ? r.name.slice(p.name.length+1) : r.name);
   setOptions(dong, [], '시·군·구 먼저 선택');
   preview();
 }
 function updateDongs() {
+  clearHousing();
   const d = state.byCode.get(district.value);
   setOptions(dong, d ? state.rows.filter(r => r.code.startsWith(d.code.slice(0,5)) && r.code.slice(5) !== '00000') : [], '법정동 · 리 선택', r => r.name.startsWith(d.name + ' ') ? r.name.slice(d.name.length+1) : r.name);
   preview();
@@ -37,7 +39,10 @@ function addressText() {
   const bun = $('bun').value.trim(), ji = $('ji').value.trim();
   return row ? `${row.name}${$('land-type').value === '1' ? ' 산' : ' '}${bun ? String(Number(bun)) : ''}${ji && Number(ji) ? '-'+Number(ji) : ''}${bun ? $('land-type').value === '2' ? ' 블록' : '번지' : ''}` : '';
 }
-function preview() { $('address-preview').textContent = addressText() || (state.mode === 'road' ? '주소 검색에서 도로명주소를 선택해 주세요.' : '조회할 지역과 지번을 선택해 주세요.'); }
+function preview() {
+  $('address-preview').textContent = addressText() || (state.mode === 'road' ? '주소 검색에서 도로명주소를 선택해 주세요.' : '조회할 지역과 지번을 선택해 주세요.');
+  if (!state.busy) $('search-button').querySelector('span').textContent = state.mode === 'jibun' && !$('bun').value.trim() ? '공동주택 찾기' : '건물 조회';
+}
 function message(title, body, type = '') {
   const box = $('message');
   box.className = `message ${type}`;
@@ -60,8 +65,10 @@ function setBusy(busy) {
   $('road-fields').disabled = busy || state.mode !== 'road';
   $('search-button').classList.toggle('loading', busy);
   $('search-button').querySelector('span').textContent = busy ? '조회 중…' : '건물 조회';
+  if (!busy) preview();
 }
 function setMode(mode) {
+  clearHousing();
   state.mode = mode;
   for (const input of document.querySelectorAll('[name="address-mode"]')) input.checked = input.value === mode;
   $('jibun-fields').hidden = mode !== 'jibun';
@@ -151,9 +158,45 @@ function renderBuilding(index) {
       ${detail('관리건축물대장 PK', b.mgmBldrgstPk)}${detail('데이터 생성일', date(b.crtnDay))}
     </dl>`;
 }
+function clearHousing() {
+  state.areaData = null;
+  $('housing-browser').hidden = true;
+  $('results').hidden = true;
+}
+function showResults(data,address) {
+  state.results = data.buildings;
+  const residential = data.buildings.filter(b=>(b.hhldCnt??0)>0 || (b.fmlyCnt??0)>0).length;
+  $('result-count').textContent = `${data.buildings.length}건${residential ? ' · 주거동 '+residential+'개' : ''}`;
+  $('result-address').textContent = address + (data.queryType === 'road' && data.lots?.length ? ` · 조회 지번 ${data.lots.length}개` : '');
+  $('building-select').replaceChildren(...data.buildings.map((b,i) => new Option(`${b.bldNm??'건물명 확인 필요'}${b.dongNm&&!b.bldNm?.includes(b.dongNm)?' · '+b.dongNm:''}${b.mainAtchGbCdNm?' ('+b.mainAtchGbCdNm+')':''} · ${i+1}`,String(i))));
+  $('fetch-time').textContent = `조회 ${new Date(data.fetchedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})}`;
+  $('warning-box').hidden = !data.warnings.length;
+  $('warning-box').replaceChildren(...data.warnings.map(w=>{const p=document.createElement('p');p.textContent=w;return p;}));
+  renderBuilding(0);$('results').hidden = false;
+}
+function filterHousing() {
+  if (!state.areaData) return;
+  const word = $('housing-filter').value.trim().toLocaleLowerCase('ko-KR').replace(/\s/g,'');
+  const type = $('housing-type').value;
+  const unknownType = g => g.types.length===1 && g.types[0]==='공동주택';
+  const groups = state.areaData.complexes.filter(g=>(!type||g.types.includes(type)||unknownType(g)) && (!word||`${g.name} ${g.names.join(' ')} ${g.address} ${g.lots.join(' ')}`.toLocaleLowerCase('ko-KR').replace(/\s/g,'').includes(word)));
+  $('complex-select').replaceChildren(new Option(groups.length?'단지·건물을 선택해 주세요':'조건에 맞는 공동주택이 없습니다',''),...groups.map(g=>new Option(`${g.name}${unknownType(g)?' [상세유형 확인 필요]':''} · ${g.buildingIds.length}개 동/건물 · ${g.address}`,g.id)));
+  $('complex-select').disabled = !groups.length;
+  $('housing-filter-status').textContent = `${groups.length}개 단지·건물 선택 가능${type && type!=='공동주택' && groups.some(unknownType)?' · 대장에 상세유형이 없는 공동주택도 함께 표시합니다.':''}`;
+  $('results').hidden = true;
+}
+$('housing-filter').addEventListener('input',filterHousing);
+$('housing-type').addEventListener('change',filterHousing);
+$('complex-select').addEventListener('change',()=>{
+  const group = state.areaData?.complexes.find(g=>g.id===$('complex-select').value);
+  if (!group) { $('results').hidden=true;return; }
+  const ids = new Set(group.buildingIds);
+  showResults({...state.areaData,buildings:state.areaData.buildings.filter(b=>ids.has(b.id))},`${group.name} · ${group.address}`);
+});
 province.addEventListener('change', updateDistricts);
 district.addEventListener('change', updateDongs);
 for (const id of ['dong','land-type','bun','ji']) $(id).addEventListener('input', preview);
+$('dong').addEventListener('change',clearHousing);
 $('building-select').addEventListener('change', e => renderBuilding(Number(e.target.value)));
 $('example-button').addEventListener('click', () => {
   // These exact codes and address appear in the supplied official API guide.
@@ -172,14 +215,21 @@ $('search-form').addEventListener('submit', async e => {
     if (!state.road.roadQuery) return message('주소를 다시 선택해 주세요','주소 검색에서 도로명주소를 다시 선택해 주세요.','error');
     query = new URLSearchParams(state.road.roadQuery);
   } else {
-  if (!/^[0-9]{1,4}$/.test($('bun').value) || Number($('bun').value) === 0) return message('본번을 확인해 주세요', '본번은 1~9999 사이 숫자로 입력해 주세요.', 'error');
   const code = dong.value;
   if (!state.byCode.has(code)) return message('지역을 선택해 주세요', '공식 목록에서 시군구와 법정동·리를 선택해 주세요.', 'error');
-  query = new URLSearchParams({ sigunguCd: code.slice(0,5), bjdongCd: code.slice(5), platGbCd:$('land-type').value, bun:$('bun').value, ji:$('ji').value || '0' });
+  if (!$('bun').value.trim()) {
+    if (Number($('ji').value||0)>0) return message('본번도 입력해 주세요','특정 지번을 조회하려면 본번을 함께 입력해 주세요.','error');
+    query = new URLSearchParams({mode:'area',sigunguCd:code.slice(0,5),bjdongCd:code.slice(5)});
+  } else {
+    if (!/^[0-9]{1,4}$/.test($('bun').value) || Number($('bun').value) === 0) return message('본번을 확인해 주세요','본번은 1~9999 사이 숫자로 입력해 주세요.','error');
+    query = new URLSearchParams({ sigunguCd: code.slice(0,5), bjdongCd: code.slice(5), platGbCd:$('land-type').value, bun:$('bun').value, ji:$('ji').value || '0' });
   }
-  const address = addressText();
+  }
+  const address = addressText().trim();
+  const browsing = query.get('mode') === 'area';
+  clearHousing();
   $('results').hidden = true; $('empty-state').hidden = true;
-  message('건축물대장을 확인하고 있어요', state.mode === 'road' ? '같은 법정동·리의 표제부를 조회한 뒤 도로명코드와 건물번호가 같은 건물을 모으고 있습니다.' : '기본개요와 표제부를 조회합니다. 대규모 단지는 목록을 모두 불러오는 데 시간이 걸릴 수 있어요.', 'loading');
+  message('건축물대장을 확인하고 있어요', browsing ? '선택한 지역의 공동주택 목록을 불러오고 있습니다. 처음 조회하는 지역은 시간이 걸릴 수 있어요.' : state.mode === 'road' ? '같은 법정동·리의 표제부를 조회한 뒤 도로명코드와 건물번호가 같은 건물을 모으고 있습니다.' : '기본개요와 표제부를 조회합니다. 대규모 단지는 목록을 모두 불러오는 데 시간이 걸릴 수 있어요.', 'loading');
   setBusy(true);
   try {
     const res = await fetch(`/api/buildings?${query}`, { signal: AbortSignal.timeout(110000) });
@@ -190,20 +240,22 @@ $('search-form').addEventListener('submit', async e => {
       return;
     }
     state.results = data.buildings;
+    if (data.queryType === 'area') {
+      if (!data.complexes.length) {message('조회된 공동주택이 없습니다',`${address}에 공동주택으로 등록된 건물을 찾지 못했습니다. 읍·면 지역은 리까지 선택해 주세요.`,'empty');return;}
+      state.areaData = data;state.areaAddress = address;
+      $('housing-title').textContent = `${address}의 공동주택`;
+      $('housing-summary').textContent = `${data.complexes.length}개 단지·건물 · ${data.buildings.length}개 동/건물`;
+      $('housing-filter').value = '';
+      const types = [...new Set(data.complexes.flatMap(g=>g.types))].sort();
+      $('housing-type').replaceChildren(new Option('전체 유형',''),...types.map(t=>new Option(t,t)));
+      filterHousing();$('housing-browser').hidden=false;$('message').hidden=true;return;
+    }
     if (!data.buildings.length) {
       message('조회된 건물이 없습니다', `${address}의 표제부를 찾지 못했습니다. 법정동·리, 본번·부번, 산 여부를 확인해 주세요.${data.warnings.length ? ' '+data.warnings.join(' ') : ''}`, 'empty');
       return;
     }
     $('message').hidden = true;
-    const residential = data.buildings.filter(b=>(b.hhldCnt??0)>0 || (b.fmlyCnt??0)>0).length;
-    $('result-count').textContent = `${data.buildings.length}건${residential ? ' · 주거동 '+residential+'개' : ''}`;
-    $('result-address').textContent = address + (data.queryType === 'road' && data.lots?.length ? ` · 조회 지번 ${data.lots.length}개` : '');
-    $('building-select').replaceChildren(...data.buildings.map((b,i) => new Option(`${b.bldNm ?? '건물명 확인 필요'}${b.dongNm && !b.bldNm?.includes(b.dongNm) ? ' · '+b.dongNm : ''}${b.mainAtchGbCdNm ? ' ('+b.mainAtchGbCdNm+')' : ''} · ${i+1}`, String(i))));
-    $('fetch-time').textContent = `조회 ${new Date(data.fetchedAt).toLocaleString('ko-KR', { timeZone:'Asia/Seoul', hour12:false })}`;
-    const warnings = [...data.warnings];
-    $('warning-box').hidden = !warnings.length;
-    $('warning-box').replaceChildren(...warnings.map(w => { const p = document.createElement('p'); p.textContent = w; return p; }));
-    renderBuilding(0); $('results').hidden = false;
+    showResults(data,address);
   } catch (err) {
     message(err.name === 'TimeoutError' ? '조회 시간이 길어지고 있어요' : '서버에 연결하지 못했어요', '앱 서버가 실행 중인지 확인한 뒤 다시 조회해 주세요.', 'error');
   } finally { setBusy(false); }

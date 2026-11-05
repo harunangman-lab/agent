@@ -35,10 +35,11 @@
         </div>
         <div class="lot-grid">
           <label>대지 구분<select id="land-type"><option value="0">대지</option><option value="1">산</option><option value="2">블록</option></select></label>
-          <label>본번<input id="bun" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" placeholder="예: 12" required autocomplete="off"></label>
+          <label>본번 <span class="optional">선택</span><input id="bun" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" placeholder="비우면 공동주택 목록" autocomplete="off"></label>
           <span class="lot-divider" aria-hidden="true">–</span>
           <label>부번 <span class="optional">선택</span><input id="ji" inputmode="numeric" pattern="[0-9]{1,4}" maxlength="4" placeholder="없으면 0" autocomplete="off"></label>
         </div>
+        <p class="road-help">본번·부번을 비워두면 선택한 법정동·리의 공동주택을 찾습니다. 지번을 입력하면 해당 지번만 조회합니다.</p>
         </fieldset>
         <fieldset id="road-fields" class="address-fields" hidden disabled><legend class="sr-only">도로명주소 입력</legend>
           <label for="road-keyword">도로명주소 또는 건물명</label>
@@ -54,6 +55,13 @@
     </section>
 
     <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+    <section id="housing-browser" class="housing-browser" aria-labelledby="housing-title" hidden>
+      <div class="housing-heading"><div><p class="eyebrow">FIND YOUR PROPERTY</p><h2 id="housing-title">우리 동네 공동주택</h2><p id="housing-summary"></p></div></div>
+      <div class="housing-filters"><label>단지·건물명 검색<input id="housing-filter" type="search" placeholder="예: 길음뉴타운, 삼정" autocomplete="off"></label><label>주택 유형<select id="housing-type"><option value="">전체 유형</option></select></label></div>
+      <label for="complex-select">단지 · 건물 선택</label><select id="complex-select"><option value="">단지·건물을 선택해 주세요</option></select>
+      <p id="housing-filter-status" class="road-help" role="status" aria-live="polite"></p>
+      <p class="road-help">대장에 공동주택으로 등록된 건물만 표시합니다. 동·호수 중 ‘동’별 건물정보를 확인할 수 있습니다.</p>
+    </section>
     <section id="results" class="results" aria-label="건물 조회 결과" hidden>
       <div class="results-header"><div><p class="eyebrow">BUILDING OVERVIEW</p><h2>건물 브리핑 <span id="result-count"></span></h2><p id="result-address"></p></div><div class="live-badge"><span></span>실제 API 조회</div></div>
       <div class="selection-bar"><label for="building-select">건물 · 동 선택</label><select id="building-select"></select><span id="fetch-time"></span></div>
