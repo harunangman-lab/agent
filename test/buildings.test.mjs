@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeBuilding, parseResponse, fetchRecords, lookupBuildings, AppError } from '../lib/buildings.mjs';
+import { normalizeBuilding, parseResponse, fetchRecords, lookupBuildings, lookupRoadBuildings, matchRoad, AppError } from '../lib/buildings.mjs';
 const payload = (items, total = items.length) => JSON.stringify({ response:{ header:{ resultCode:'00' }, body:{ items:{ item:items }, totalCount:total } } });
 const query = { sigunguCd:'11680', bjdongCd:'10300', platGbCd:'0', bun:'0012', ji:'0000' };
 
@@ -40,4 +40,24 @@ test('basic-only fallback excludes individual unit registers and labels partial 
 test('missing key and network exceptions are sanitized', async () => {
   await assert.rejects(lookupBuildings(query,''), e => e.code === 'KEY_MISSING');
   await assert.rejects(fetchRecords('getBrTitleInfo', query, 'SECRET_KEY', async () => { throw new Error('SECRET_KEY'); }), e => e instanceof AppError && e.code === 'NETWORK_ERROR' && !e.message.includes('SECRET_KEY'));
+});
+test('same road combines lots, excludes other building numbers, deduplicates keys, sorts residences first', async () => {
+  const q = {sigunguCd:'11290',bjdongCd:'13400',roadCd:'112903107001',roadMain:'118',roadSub:'0'};
+  const row = {naRoadCd:q.roadCd,naMainBun:'118',naSubBun:'0',mainPurpsCdNm:'공동주택'};
+  const rows = [
+    {...row,mgmBldrgstPk:'guard',dongNm:'경비실13',platPlc:'길음동 1281-1번지',hhldCnt:0},
+    {...row,mgmBldrgstPk:'402',dongNm:'402동',platPlc:'길음동 1281번지',hhldCnt:10},
+    {...row,mgmBldrgstPk:'401',dongNm:'401동',platPlc:'길음동 1281번지',hhldCnt:10},
+    {...row,mgmBldrgstPk:'401',dongNm:'401동',platPlc:'길음동 1281번지',hhldCnt:10},
+    {...row,mgmBldrgstPk:'wrong',naSubBun:1},
+    {...row,mgmBldrgstPk:'wrong2',naMainBun:1180},
+    {...row,mgmBldrgstPk:'wrong3',naRoadCd:'112903107002'},
+  ];
+  const calls=[];
+  const result=await lookupRoadBuildings(q,'test',async url=>{calls.push(url);return new Response(payload(rows));});
+  assert.deepEqual(result.buildings.map(b=>b.id),['401','402','guard']);
+  assert.equal(result.lots.length,2);
+  assert.ok(result.warnings.some(w=>w.includes('지번 2개')));
+  assert.equal(calls[0].searchParams.has('bun'),false);assert.equal(calls[0].searchParams.has('ji'),false);
+  assert.equal(matchRoad({...row,naSubBun:null},q),false);
 });

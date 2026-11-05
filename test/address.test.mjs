@@ -19,16 +19,15 @@ test('missing road address, unknown code and unparseable lot are rejected', () =
   assert.throws(() => normalizeRoadAddress({...selected,bcode:'0000000000'},codes), /코드/);
   assert.throws(() => normalizeRoadAddress({...selected,jibunAddress:'서울특별시 강남구 개포동'},codes), /본번/);
 });
-test('verified Edu city-ro 148 provider mismatch resolves to Boseong-ri 2424, preserving evidence', () => {
+test('road lookup uses road identifier, regardless of selected related lot', () => {
   const codes = new Set(['5013025029']);
-  const bad = {roadAddress:'제주특별자치도 서귀포시 대정읍 에듀시티로 148',jibunAddress:'제주특별자치도 서귀포시 대정읍 보성리 2484',bcode:'5013025029'};
+  const bad = {roadAddress:'제주특별자치도 서귀포시 대정읍 에듀시티로 148',jibunAddress:'제주특별자치도 서귀포시 대정읍 보성리 2484',bcode:'5013025029',roadnameCode:'3350504'};
   const result = normalizeRoadAddress(bad,codes);
-  assert.equal(result.jibunAddress,'제주특별자치도 서귀포시 대정읍 보성리 2424');
-  assert.equal(result.query.bun,'2424'); assert.equal(result.query.ji,'0000');
-  assert.equal(result.correction.originalJibunAddress,bad.jibunAddress);
-  assert.equal(result.correction.verifiedOn,'2026-11-05');
+  assert.equal(result.jibunAddress,bad.jibunAddress);
+  assert.equal(result.roadQuery.roadCd,'501303350504');
+  assert.equal(result.roadQuery.roadMain,'148'); assert.equal(result.roadQuery.roadSub,'0');
   const alreadyCorrect = normalizeRoadAddress({...bad,jibunAddress:'제주특별자치도 서귀포시 대정읍 보성리 2424'},codes);
-  assert.equal(alreadyCorrect.query.bun,'2424'); assert.equal(alreadyCorrect.correction,null);
-  assert.equal(normalizeRoadAddress({...bad,roadAddress:'제주특별자치도 서귀포시 대정읍 에듀시티로 148-1'},codes).query.bun,'2484');
+  assert.deepEqual(alreadyCorrect.roadQuery,result.roadQuery);
+  assert.equal(normalizeRoadAddress({...bad,roadAddress:'제주특별자치도 서귀포시 대정읍 에듀시티로 148-1'},codes).roadQuery.roadSub,'1');
   assert.equal(normalizeRoadAddress({...bad,jibunAddress:'제주특별자치도 서귀포시 대정읍 보성리 2484-1'},codes).query.bun,'2484');
 });

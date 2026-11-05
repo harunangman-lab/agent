@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { AppError, lookupBuildings } from './lib/buildings.mjs';
+import { AppError, lookupBuildings, lookupRoadBuildings, sortBuildings } from './lib/buildings.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 try { process.loadEnvFile(path.join(root, '.env')); } catch (err) { if (err.code !== 'ENOENT') throw err; }
@@ -32,11 +32,21 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/buildings') {
       const q = Object.fromEntries(['sigunguCd','bjdongCd','platGbCd','bun','ji'].map(k => [k, url.searchParams.get(k) ?? '']));
       if (!/^\d{5}$/.test(q.sigunguCd) || !/^\d{5}$/.test(q.bjdongCd) || !allowed.has(q.sigunguCd + q.bjdongCd)) throw new AppError('INVALID_ADDRESS', '공식 코드 목록에서 시군구와 법정동·리를 선택해 주세요.', 400);
-      if (!['0','1','2'].includes(q.platGbCd) || !/^\d{1,4}$/.test(q.bun) || Number(q.bun) === 0 || !/^\d{1,4}$/.test(q.ji)) throw new AppError('INVALID_ADDRESS', '본번은 1~9999, 부번은 0~9999 사이 숫자로 입력해 주세요.', 400);
-      q.bun = q.bun.padStart(4, '0'); q.ji = q.ji.padStart(4, '0');
+      const road = url.searchParams.get('mode') === 'road';
+      if (road) {
+        for (const k of ['roadCd','roadMain','roadSub']) q[k] = url.searchParams.get(k) ?? '';
+        if (!/^\d{12,17}$/.test(q.roadCd) || !q.roadCd.startsWith(q.sigunguCd) || !/^\d{1,5}$/.test(q.roadMain) || Number(q.roadMain) === 0 || !/^\d{1,5}$/.test(q.roadSub)) throw new AppError('INVALID_ADDRESS','주소검색에서 도로명주소를 다시 선택해 주세요.',400);
+      } else {
+        if (!['0','1','2'].includes(q.platGbCd) || !/^\d{1,4}$/.test(q.bun) || Number(q.bun) === 0 || !/^\d{1,4}$/.test(q.ji)) throw new AppError('INVALID_ADDRESS', '본번은 1~9999, 부번은 0~9999 사이 숫자로 입력해 주세요.', 400);
+        q.bun = q.bun.padStart(4, '0'); q.ji = q.ji.padStart(4, '0');
+      }
       if (active >= 6) throw new AppError('BUSY', '다른 조회를 처리 중입니다. 잠시 후 다시 시도해 주세요.', 429);
       active++;
-      try { return send(res, 200, await lookupBuildings(q, process.env.BUILDING_API_KEY)); }
+      try {
+        const result = await (road ? lookupRoadBuildings(q,process.env.BUILDING_API_KEY) : lookupBuildings(q,process.env.BUILDING_API_KEY));
+        result.buildings = sortBuildings(result.buildings);
+        return send(res,200,result);
+      }
       finally { active--; }
     }
     if (staticFiles.has(url.pathname)) {

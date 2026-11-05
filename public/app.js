@@ -32,7 +32,7 @@ function updateDongs() {
   preview();
 }
 function addressText() {
-  if (state.mode === 'road') return state.road ? `${state.road.roadAddress} (지번: ${state.road.jibunAddress})` : '';
+  if (state.mode === 'road') return state.road ? state.road.roadAddress : '';
   const row = state.byCode.get(dong.value);
   const bun = $('bun').value.trim(), ji = $('ji').value.trim();
   return row ? `${row.name}${$('land-type').value === '1' ? ' 산' : ' '}${bun ? String(Number(bun)) : ''}${ji && Number(ji) ? '-'+Number(ji) : ''}${bun ? $('land-type').value === '2' ? ' 블록' : '번지' : ''}` : '';
@@ -106,12 +106,13 @@ $('road-search-button').addEventListener('click', async () => {
       oncomplete(data) {
         try {
           const selected = normalizeRoadAddress(data, state.byCode);
+          if (!selected.roadQuery) throw new Error('도로명코드와 건물번호를 확인하지 못했습니다. 주소를 다시 선택하거나 지번으로 조회해 주세요.');
           state.road = selected;
           $('road-keyword').value = selected.roadAddress;
           $('selected-road-address').textContent = selected.roadAddress;
-          $('selected-jibun-address').textContent = `연결 지번 · ${selected.jibunAddress}${selected.buildingName ? ' · '+selected.buildingName : ''}`;
+          $('selected-jibun-address').textContent = `검색에서 선택한 지번 · ${selected.jibunAddress}${selected.buildingName ? ' · '+selected.buildingName : ''}`;
           $('road-selected').hidden = false;
-          $('road-status').textContent = selected.correction ? selected.correction.message : '주소 선택 완료. 건물 조회를 눌러 주세요.';
+          $('road-status').textContent = '선택 지번에 한정하지 않고, 같은 법정동·리에서 도로명주소가 같은 건물을 함께 조회합니다.';
           preview(); addressDialog.close(); $('search-button').focus();
         } catch (err) {
           state.road = null; $('road-selected').hidden = true;
@@ -168,7 +169,8 @@ $('search-form').addEventListener('submit', async e => {
   let query;
   if (state.mode === 'road') {
     if (!state.road) return message('도로명주소를 선택해 주세요', '주소 검색을 눌러 검색 결과에서 도로명주소를 선택한 뒤 조회해 주세요.', 'error');
-    query = new URLSearchParams(state.road.query);
+    if (!state.road.roadQuery) return message('주소를 다시 선택해 주세요','주소 검색에서 도로명주소를 다시 선택해 주세요.','error');
+    query = new URLSearchParams(state.road.roadQuery);
   } else {
   if (!/^[0-9]{1,4}$/.test($('bun').value) || Number($('bun').value) === 0) return message('본번을 확인해 주세요', '본번은 1~9999 사이 숫자로 입력해 주세요.', 'error');
   const code = dong.value;
@@ -177,7 +179,7 @@ $('search-form').addEventListener('submit', async e => {
   }
   const address = addressText();
   $('results').hidden = true; $('empty-state').hidden = true;
-  message('건축물대장을 확인하고 있어요', '기본개요와 표제부를 조회합니다. 대규모 단지는 목록을 모두 불러오는 데 시간이 걸릴 수 있어요.', 'loading');
+  message('건축물대장을 확인하고 있어요', state.mode === 'road' ? '같은 법정동·리의 표제부를 조회한 뒤 도로명코드와 건물번호가 같은 건물을 모으고 있습니다.' : '기본개요와 표제부를 조회합니다. 대규모 단지는 목록을 모두 불러오는 데 시간이 걸릴 수 있어요.', 'loading');
   setBusy(true);
   try {
     const res = await fetch(`/api/buildings?${query}`, { signal: AbortSignal.timeout(110000) });
@@ -193,12 +195,12 @@ $('search-form').addEventListener('submit', async e => {
       return;
     }
     $('message').hidden = true;
-    $('result-count').textContent = `${data.buildings.length}건`;
-    $('result-address').textContent = address;
+    const residential = data.buildings.filter(b=>(b.hhldCnt??0)>0 || (b.fmlyCnt??0)>0).length;
+    $('result-count').textContent = `${data.buildings.length}건${residential ? ' · 주거동 '+residential+'개' : ''}`;
+    $('result-address').textContent = address + (data.queryType === 'road' && data.lots?.length ? ` · 조회 지번 ${data.lots.length}개` : '');
     $('building-select').replaceChildren(...data.buildings.map((b,i) => new Option(`${b.bldNm ?? '건물명 확인 필요'}${b.dongNm && !b.bldNm?.includes(b.dongNm) ? ' · '+b.dongNm : ''}${b.mainAtchGbCdNm ? ' ('+b.mainAtchGbCdNm+')' : ''} · ${i+1}`, String(i))));
     $('fetch-time').textContent = `조회 ${new Date(data.fetchedAt).toLocaleString('ko-KR', { timeZone:'Asia/Seoul', hour12:false })}`;
     const warnings = [...data.warnings];
-    if (state.mode === 'road' && state.road?.correction) warnings.unshift(state.road.correction.message);
     $('warning-box').hidden = !warnings.length;
     $('warning-box').replaceChildren(...warnings.map(w => { const p = document.createElement('p'); p.textContent = w; return p; }));
     renderBuilding(0); $('results').hidden = false;
